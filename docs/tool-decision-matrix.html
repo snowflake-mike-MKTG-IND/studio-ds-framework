@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tool Decision Matrix for Data Science on Snowflake</title>
+<style>
+  :root{
+    --sf-blue:#29B5E8; --mid-blue:#11567F; --iceberg:#003545; --winter:#24323D;
+    --star-blue:#71D3DC; --valencia:#FF9F36; --purple-moon:#7D44CF; --first-light:#D45B90;
+    --windy:#8A999E;
+    --bg:#ffffff; --card:#ffffff; --card2:#F7FAFC;
+    --ink:#24323D; --ink-strong:#0b1c26; --muted:#6E7F87;
+    --line:#dae3e8; --accent:#29B5E8; --accent-strong:#11567F; --light-blue:#E8F4FB;
+    --good:#0f7b46; --goodbg:#E7F7EE; --warn:#96650b; --warnbg:#FDF3DD;
+    --bad:#b3261e; --badbg:#FDECEB;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+       background:var(--bg);color:var(--ink);margin:0;padding:0 20px 80px;line-height:1.55;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1,h2,h3,h4{color:var(--ink-strong);line-height:1.25}
+  h1{font-size:2.05rem;margin:0 0 8px;letter-spacing:-.02em}
+  h2{font-size:1.45rem;margin:44px 0 4px}
+  h3{font-size:1.06rem;margin:26px 0 4px}
+  h4{font-size:.92rem;margin:0 0 8px}
+  p{margin:8px 0}
+  .hero{padding:44px 0 18px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .kicker{font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+          color:var(--accent-strong);margin-bottom:10px}
+  .lede{font-size:1.06rem;color:var(--muted);max-width:74ch;margin-top:10px}
+  .sub{color:var(--muted);margin:6px 0 14px;max-width:78ch}
+
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--card)}
+  .grid{display:grid;gap:14px;margin:16px 0}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(228px,1fr))}
+  .g5{grid-template-columns:repeat(auto-fit,minmax(186px,1fr))}
+
+  .callout{border-left:4px solid var(--accent);background:var(--light-blue);
+           border-radius:0 8px 8px 0;padding:12px 16px;margin:16px 0}
+  .callout.good{border-color:var(--good);background:var(--goodbg)}
+  .callout.warn{border-color:var(--valencia);background:var(--warnbg)}
+  .callout.bad{border-color:var(--bad);background:var(--badbg)}
+  .ct{font-weight:700;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;
+      display:block;margin-bottom:4px;color:var(--ink-strong)}
+
+  .pill{display:inline-block;font-size:.62rem;font-weight:800;letter-spacing:.07em;
+        text-transform:uppercase;padding:3px 9px;border-radius:3px;white-space:nowrap}
+  .p-free{background:var(--goodbg);color:var(--good)}
+  .p-low{background:#E4F6FB;color:var(--mid-blue)}
+  .p-mid{background:var(--warnbg);color:var(--warn)}
+  .p-high{background:var(--badbg);color:var(--bad)}
+  .p-rep{background:#F1E9FB;color:var(--purple-moon)}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.9rem}
+  th{background:var(--card2);text-align:left;font-size:.66rem;letter-spacing:.08em;
+     text-transform:uppercase;color:var(--muted);padding:9px 10px;border-bottom:2px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:hover{background:var(--card2)}
+  td.q{font-weight:600;color:var(--ink-strong)}
+
+  /* stack ladder */
+  .ladder{margin:18px 0}
+  .rung{display:grid;grid-template-columns:190px 1fr 150px;gap:14px;align-items:center;
+        border:1px solid var(--line);border-left-width:5px;border-radius:8px;
+        padding:11px 14px;margin-bottom:7px;background:var(--card)}
+  .rung .nm{font-weight:700;color:var(--ink-strong);font-size:.94rem}
+  .rung .nm small{display:block;font-weight:400;color:var(--muted);font-size:.76rem;margin-top:1px}
+  .rung .ds{font-size:.86rem;color:var(--ink)}
+  .rung .cst{text-align:right}
+  .r5{border-left-color:var(--first-light);margin-left:0}
+  .r4{border-left-color:var(--purple-moon);margin-left:26px}
+  .r3{border-left-color:var(--sf-blue);margin-left:52px}
+  .r2{border-left-color:var(--mid-blue);margin-left:78px}
+  .r1{border-left-color:var(--windy);margin-left:104px}
+  .ladder-note{font-size:.82rem;color:var(--muted);margin-top:10px}
+
+  /* tool cards */
+  .tool{border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:10px;
+        padding:14px 16px;background:var(--card)}
+  .tool.t1{border-top-color:var(--windy)}
+  .tool.t2{border-top-color:var(--mid-blue)}
+  .tool.t3{border-top-color:var(--sf-blue)}
+  .tool.t4{border-top-color:var(--purple-moon)}
+  .tool.t5{border-top-color:var(--first-light)}
+  .tool h4{font-size:.95rem;color:var(--ink-strong);margin-bottom:6px}
+  .tool ul{margin:8px 0 0;padding-left:16px;font-size:.83rem}
+  .tool li{margin:3px 0}
+  .kv{font-size:.76rem;color:var(--muted);margin:2px 0}
+  .kv b{color:var(--ink);font-weight:600}
+
+  /* cost scale */
+  .scale{display:flex;flex-direction:column;gap:9px;margin:16px 0}
+  .srow{display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center;font-size:.86rem}
+  .sbar{height:22px;border-radius:4px;display:flex;align-items:center;padding:0 9px;
+        color:#fff;font-size:.7rem;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+
+  /* decision tree */
+  .tree{margin:20px 0 6px}
+  .tnode{display:flex;justify-content:center}
+  .box{border:1px solid var(--line);border-radius:8px;padding:9px 14px;background:var(--card);
+       font-size:.86rem;text-align:center;max-width:420px}
+  .box.q{background:var(--card2);font-weight:600;color:var(--ink-strong)}
+  .box.out{background:var(--mid-blue);color:#fff;border-color:var(--mid-blue);font-weight:600}
+  .box.out.alt{background:var(--sf-blue);color:var(--ink-strong);border-color:var(--sf-blue)}
+  .cdown{width:2px;height:22px;background:var(--line);margin:0 auto}
+  .branch{display:grid;grid-template-columns:1fr 1fr;gap:22px;position:relative;margin-top:18px}
+  .branch::before{content:'';position:absolute;top:-18px;left:25%;right:25%;height:2px;background:var(--line)}
+  .arm{display:flex;flex-direction:column;align-items:center}
+  .stub{width:2px;height:12px;background:var(--line)}
+  .edge{font-size:.62rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+        padding:3px 9px;border-radius:3px;margin-bottom:2px}
+  .edge.yes{color:var(--good);background:var(--goodbg)}
+  .edge.no{color:var(--warn);background:var(--warnbg)}
+
+  /* pipeline */
+  .pipe{display:flex;align-items:center;overflow-x:auto;margin:16px 0}
+  .pnode{background:var(--mid-blue);color:#fff;padding:12px 15px;border-radius:8px;
+         min-width:132px;flex-shrink:0;font-weight:600;font-size:.84rem}
+  .pnode small{display:block;font-weight:400;opacity:.82;margin-top:3px;font-size:.72rem}
+  .pnode.out{background:var(--sf-blue);color:var(--ink-strong)}
+  .pnode.ai{background:var(--purple-moon)}
+  .parrow{font-size:17px;color:var(--line);padding:0 7px;flex-shrink:0}
+
+  .versus{display:grid;grid-template-columns:1fr 1fr;border-radius:12px;overflow:hidden;margin:16px 0}
+  .vcol{padding:16px 18px}
+  .vcol h4{margin-bottom:8px}
+  .vcol.a{background:var(--iceberg);color:#fff}
+  .vcol.a h4{color:#fff}
+  .vcol.b{background:var(--sf-blue);color:var(--ink-strong)}
+  .vcol.b h4{color:var(--ink-strong)}
+  .vcol ul{margin:0;padding-left:16px;font-size:.85rem}
+  .vcol li{padding:4px 0}
+
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84em;
+       background:var(--card2);padding:1px 5px;border-radius:3px}
+  footer{margin-top:52px;padding-top:16px;border-top:1px solid var(--line);
+         font-size:.8rem;color:var(--muted)}
+  @media (max-width:640px){
+    .rung{grid-template-columns:1fr}
+    .rung .cst{text-align:left}
+    .r1,.r2,.r3,.r4,.r5{margin-left:0}
+    .versus{grid-template-columns:1fr}
+    .srow{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Studio DS Framework</div>
+  <h1>Tool Decision Matrix for Data Science on Snowflake</h1>
+  <p class="lede">Five tools, five cost profiles. Choosing between them is the same
+  decision as controlling warehouse and token spend, because credits are spent by
+  where in the stack a question gets answered.</p>
+</header>
+
+<h2>The stack</h2>
+<p class="sub">Each layer can answer the layer above's question. The cost and the
+reproducibility of an answer are set by how far down it was resolved.</p>
+
+<div class="ladder">
+  <div class="rung r5">
+    <div class="nm">Agent reasoning<small>free exploration</small></div>
+    <div class="ds">Solves a problem it has not seen before. Inspects the schema, tries approaches, retries.</div>
+    <div class="cst"><span class="pill p-high">Tokens &times; steps</span><br><span class="pill p-rep">Not reproducible</span></div>
+  </div>
+  <div class="rung r4">
+    <div class="nm">Agent skill<small>written procedure</small></div>
+    <div class="ds">Runs a known workflow in a fixed order with preconditions that can fail.</div>
+    <div class="cst"><span class="pill p-mid">Bounded tokens</span><br><span class="pill p-rep">Deterministic steps</span></div>
+  </div>
+  <div class="rung r3">
+    <div class="nm">Semantic layer<small>metrics and dimensions</small></div>
+    <div class="ds">Answers a business question in natural language against governed metric definitions.</div>
+    <div class="cst"><span class="pill p-low">WH + small token</span><br><span class="pill p-rep">Stable definitions</span></div>
+  </div>
+  <div class="rung r2">
+    <div class="nm">Curated tables<small>conformed, tested</small></div>
+    <div class="ds">Holds the metric already computed at a declared grain, with gates that prove it.</div>
+    <div class="cst"><span class="pill p-free">Warehouse only</span><br><span class="pill p-rep">Exact</span></div>
+  </div>
+  <div class="rung r1">
+    <div class="nm">Raw<small>landed source data</small></div>
+    <div class="ds">Append-only. No dashboard, agent, or report reads it directly.</div>
+    <div class="cst"><span class="pill p-free">Storage</span></div>
+  </div>
+</div>
+<p class="ladder-note">The rule that gives the stack its value: each layer reads only
+the layer directly below it. A dashboard reaching into raw because a curated column was
+missing is how a second, divergent definition of a metric gets born.</p>
+
+<h2>The five tools</h2>
+<div class="grid g5">
+  <div class="tool t1">
+    <h4>SQL + visualization</h4>
+    <p class="kv"><b>Costs:</b> warehouse seconds. No tokens.</p>
+    <p class="kv"><b>Repeatable:</b> exactly.</p>
+    <ul>
+      <li>Reach for it when the comparison, the trend, or the uncertainty is the point</li>
+      <li>Aggregate in SQL, never in the client</li>
+      <li>Skip it for a single number &mdash; that is a sentence</li>
+    </ul>
+  </div>
+  <div class="tool t2">
+    <h4>Semantic layer</h4>
+    <p class="kv"><b>Costs:</b> warehouse + a small per-question token charge.</p>
+    <p class="kv"><b>Repeatable:</b> within the governed metric set.</p>
+    <ul>
+      <li>Ad-hoc read-only business questions</li>
+      <li>Metrics, dimensions, synonyms, declared cardinality</li>
+      <li>Verified queries retrieve an answer instead of regenerating it</li>
+    </ul>
+  </div>
+  <div class="tool t3">
+    <h4>Cortex Search</h4>
+    <p class="kv"><b>Costs:</b> indexing and refresh, then per-query serving.</p>
+    <p class="kv"><b>Repeatable:</b> retrieval is stable, synthesis is not.</p>
+    <ul>
+      <li>Passages that explain the figures, with provenance</li>
+      <li>Never counts, never aggregates, never a numeric answer</li>
+      <li>Refresh lag set to the business need, not the tightest available</li>
+    </ul>
+  </div>
+  <div class="tool t4">
+    <h4>AISQL functions</h4>
+    <p class="kv"><b>Costs:</b> tokens &times; rows. The steepest curve in the stack.</p>
+    <p class="kv"><b>Repeatable:</b> yes if materialized, no if re-run.</p>
+    <ul>
+      <li>Per-row classification, extraction, enrichment</li>
+      <li>Filter and dedupe before the model sees anything</li>
+      <li>Store the output. It is an expensive column, not an answer</li>
+    </ul>
+  </div>
+  <div class="tool t5">
+    <h4>Agent reasoning</h4>
+    <p class="kv"><b>Costs:</b> tokens &times; steps &times; retries.</p>
+    <p class="kv"><b>Repeatable:</b> not by default.</p>
+    <ul>
+      <li>Novel problems, debugging, root-cause questions</li>
+      <li>Use it once, then capture what worked as a skill</li>
+      <li>In production its job is orchestration, not rediscovery</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Relative cost per answer</h2>
+<p class="sub">Ordinal, not measured. The ordering holds across accounts; the magnitudes
+depend on your rates, row counts, and model choice. Measure your own with
+<code>sql/40_cost_observability.sql</code>.</p>
+
+<div class="scale">
+  <div class="srow"><div>Materialized metric</div>
+    <div class="sbar" style="width:9%;background:var(--windy)">WH only</div></div>
+  <div class="srow"><div>Semantic-layer question</div>
+    <div class="sbar" style="width:20%;background:var(--mid-blue)">WH + NL-to-SQL</div></div>
+  <div class="srow"><div>Verified query hit</div>
+    <div class="sbar" style="width:13%;background:var(--mid-blue)">retrieved, not generated</div></div>
+  <div class="srow"><div>Retrieval-grounded report</div>
+    <div class="sbar" style="width:38%;background:var(--sf-blue);color:var(--ink-strong)">index + serve + synthesis</div></div>
+  <div class="srow"><div>Skill-driven workflow</div>
+    <div class="sbar" style="width:52%;background:var(--purple-moon)">bounded reasoning</div></div>
+  <div class="srow"><div>Free agent reasoning</div>
+    <div class="sbar" style="width:78%;background:var(--first-light)">schema discovery + retries</div></div>
+  <div class="srow"><div>AI function, full re-score</div>
+    <div class="sbar" style="width:100%;background:var(--bad)">tokens &times; every row, every run</div></div>
+</div>
+
+<div class="callout warn">
+  <span class="ct">The one that surprises teams</span>
+  A pipeline that re-classifies its whole corpus on every run has cost proportional to
+  total data times run frequency. Incremental scoring makes it proportional to new data.
+  The same result, a different cost curve.
+</div>
+
+<h2>Decision matrix</h2>
+<p class="sub">Route by the shape of the question, not by the tool someone is excited about.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:26%">The stakeholder asks</th><th style="width:19%">Route to</th>
+        <th style="width:15%">Cost driver</th><th>Why not the alternative</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="q">"What was X last quarter?"</td>
+      <td>Curated metric, rendered as a chart</td>
+      <td><span class="pill p-free">WH only</span></td>
+      <td>An agent re-deriving this pays tokens to reproduce a number that is already known and already agreed.</td>
+    </tr>
+    <tr>
+      <td class="q">"Show me X broken out by Y"</td>
+      <td>Semantic layer</td>
+      <td><span class="pill p-low">WH + small token</span></td>
+      <td>Hand-writing the SQL does not scale to the next twelve variants, and each variant is a chance to define X differently.</td>
+    </tr>
+    <tr>
+      <td class="q">"Why did X move?"</td>
+      <td>Agent reasoning, grounded on the semantic layer</td>
+      <td><span class="pill p-high">Tokens &times; steps</span></td>
+      <td>No fixed query anticipates the cause. This is what reasoning is for.</td>
+    </tr>
+    <tr>
+      <td class="q">"What are people saying about X?"</td>
+      <td>Cortex Search over the text corpus</td>
+      <td><span class="pill p-mid">Index + serve</span></td>
+      <td>Aggregating unstructured text in SQL loses the evidence, and the evidence is the answer.</td>
+    </tr>
+    <tr>
+      <td class="q">"How many of them were negative?"</td>
+      <td>AISQL once, materialized, then <code>COUNT</code></td>
+      <td><span class="pill p-free">WH on the count</span></td>
+      <td>Retrieval has no notion of completeness. It returns the count of what it retrieved, which is a sample, and it will look like an answer.</td>
+    </tr>
+    <tr>
+      <td class="q">"Classify these 400,000 rows"</td>
+      <td>AISQL, incremental, filtered first</td>
+      <td><span class="pill p-high">Tokens &times; rows</span></td>
+      <td>Agent-loop classification costs orders of magnitude more for a worse audit trail.</td>
+    </tr>
+    <tr>
+      <td class="q">"Run the weekly report"</td>
+      <td>Agent skill</td>
+      <td><span class="pill p-mid">Bounded tokens</span></td>
+      <td>A free-form prompt drifts week to week, and the drift is invisible until someone reconciles two editions.</td>
+    </tr>
+    <tr>
+      <td class="q">"Is this number right?"</td>
+      <td>Gate suite, run as a subagent</td>
+      <td><span class="pill p-free">WH only</span></td>
+      <td>Asking the agent that produced the number is asking it to audit itself.</td>
+    </tr>
+    <tr>
+      <td class="q">"Can you build me a dashboard for this?"</td>
+      <td>Answer it once; build only if it recurs</td>
+      <td><span class="pill p-free">WH only</span></td>
+      <td>Dashboards for questions asked once are the most common way DS capacity gets absorbed.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Routing a new request</h2>
+
+<div class="tree">
+  <div class="tnode"><div class="box q">A stakeholder asks for something</div></div>
+  <div class="cdown"></div>
+  <div class="tnode"><div class="box q">Has this been asked before?</div></div>
+  <div class="branch">
+    <div class="arm">
+      <span class="edge yes">Yes</span><div class="stub"></div>
+      <div class="box q">Is the answer a number or a passage?</div>
+      <div class="branch" style="margin-top:16px">
+        <div class="arm"><span class="edge yes">Number</span><div class="stub"></div>
+          <div class="box out">Semantic layer metric<br><small style="font-weight:400;opacity:.85">add a verified query</small></div></div>
+        <div class="arm"><span class="edge no">Passage</span><div class="stub"></div>
+          <div class="box out alt">Cortex Search<br><small style="font-weight:400">retrieve, cite, synthesize</small></div></div>
+      </div>
+    </div>
+    <div class="arm">
+      <span class="edge no">No</span><div class="stub"></div>
+      <div class="box q">Does answering it need per-row model work?</div>
+      <div class="branch" style="margin-top:16px">
+        <div class="arm"><span class="edge yes">Yes</span><div class="stub"></div>
+          <div class="box out">AISQL, incremental<br><small style="font-weight:400;opacity:.85">estimate tokens first</small></div></div>
+        <div class="arm"><span class="edge no">No</span><div class="stub"></div>
+          <div class="box out alt">Agent reasoning<br><small style="font-weight:400">then capture as a skill</small></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <span class="ct">The recurrence rule</span>
+  The second time a stakeholder asks something, it is not a question, it is a metric.
+  Recurrence is the signal to push the logic down a layer &mdash; and the point at which
+  the cost per answer should start falling.
+</div>
+
+<h2>Where the layers sit</h2>
+<p class="sub">Consumers on the right never reach past the semantic layer. Model work is
+materialized once, on the left.</p>
+
+<svg viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg" font-family="system-ui" style="width:100%;height:auto;margin:14px 0">
+  <rect x="0" y="0" width="800" height="292" rx="12" fill="#F7FAFC" stroke="#dae3e8"/>
+  <text x="16" y="21" font-size="9" font-weight="700" fill="#6E7F87" letter-spacing="1">HOW A QUESTION REACHES DATA</text>
+
+  <!-- raw -->
+  <rect x="24" y="46" width="118" height="42" rx="6" fill="#ffffff" stroke="#8A999E" stroke-width="1.5"/>
+  <text x="83" y="65" font-size="10.5" font-weight="700" fill="#24323D" text-anchor="middle">RAW</text>
+  <text x="83" y="78" font-size="8.5" fill="#6E7F87" text-anchor="middle">landed, append-only</text>
+
+  <!-- ai enrichment -->
+  <rect x="24" y="118" width="118" height="42" rx="6" fill="#F1E9FB" stroke="#7D44CF" stroke-width="1.5"/>
+  <text x="83" y="137" font-size="10.5" font-weight="700" fill="#5B2E9E" text-anchor="middle">AISQL</text>
+  <text x="83" y="150" font-size="8.5" fill="#6E7F87" text-anchor="middle">scored once, stored</text>
+
+  <!-- curated -->
+  <rect x="212" y="82" width="140" height="52" rx="6" fill="#E4F6FB" stroke="#11567F" stroke-width="1.5"/>
+  <text x="282" y="103" font-size="10.5" font-weight="700" fill="#11567F" text-anchor="middle">CURATED</text>
+  <text x="282" y="117" font-size="8.5" fill="#6E7F87" text-anchor="middle">declared grain</text>
+  <text x="282" y="128" font-size="8.5" fill="#6E7F87" text-anchor="middle">as-of correct</text>
+
+  <!-- gates -->
+  <rect x="212" y="176" width="140" height="42" rx="6" fill="#E7F7EE" stroke="#0f7b46" stroke-width="1.5"/>
+  <text x="282" y="195" font-size="10.5" font-weight="700" fill="#0f7b46" text-anchor="middle">GATES</text>
+  <text x="282" y="208" font-size="8.5" fill="#6E7F87" text-anchor="middle">zero rows = pass</text>
+
+  <!-- semantic -->
+  <rect x="418" y="82" width="140" height="52" rx="6" fill="#E8F4FB" stroke="#29B5E8" stroke-width="2"/>
+  <text x="488" y="103" font-size="10.5" font-weight="700" fill="#11567F" text-anchor="middle">SEMANTIC VIEW</text>
+  <text x="488" y="117" font-size="8.5" fill="#6E7F87" text-anchor="middle">metrics, synonyms</text>
+  <text x="488" y="128" font-size="8.5" fill="#6E7F87" text-anchor="middle">verified queries</text>
+
+  <!-- search -->
+  <rect x="418" y="176" width="140" height="42" rx="6" fill="#ffffff" stroke="#29B5E8" stroke-width="1.5"/>
+  <text x="488" y="195" font-size="10.5" font-weight="700" fill="#11567F" text-anchor="middle">CORTEX SEARCH</text>
+  <text x="488" y="208" font-size="8.5" fill="#6E7F87" text-anchor="middle">passages, not counts</text>
+
+  <!-- consumers -->
+  <rect x="632" y="46" width="144" height="38" rx="6" fill="#ffffff" stroke="#dae3e8" stroke-width="1.5"/>
+  <text x="704" y="70" font-size="10" font-weight="700" fill="#24323D" text-anchor="middle">Dashboards</text>
+
+  <rect x="632" y="96" width="144" height="38" rx="6" fill="#ffffff" stroke="#dae3e8" stroke-width="1.5"/>
+  <text x="704" y="120" font-size="10" font-weight="700" fill="#24323D" text-anchor="middle">Agent skills</text>
+
+  <rect x="632" y="146" width="144" height="38" rx="6" fill="#ffffff" stroke="#dae3e8" stroke-width="1.5"/>
+  <text x="704" y="170" font-size="10" font-weight="700" fill="#24323D" text-anchor="middle">Analyst questions</text>
+
+  <rect x="632" y="196" width="144" height="38" rx="6" fill="#ffffff" stroke="#dae3e8" stroke-width="1.5"/>
+  <text x="704" y="220" font-size="10" font-weight="700" fill="#24323D" text-anchor="middle">Reports</text>
+
+  <!-- connectors into curated -->
+  <line x1="142" y1="67"  x2="208" y2="98"  stroke="#8A999E" stroke-width="1.4" marker-end="url(#aGrey)"/>
+  <line x1="142" y1="139" x2="208" y2="118" stroke="#7D44CF" stroke-width="1.4" marker-end="url(#aPurple)"/>
+
+  <!-- curated -> gates -->
+  <line x1="282" y1="134" x2="282" y2="172" stroke="#0f7b46" stroke-width="1.4" marker-end="url(#aGreen)"/>
+  <!-- curated -> semantic -->
+  <line x1="352" y1="108" x2="414" y2="108" stroke="#29B5E8" stroke-width="1.8" marker-end="url(#aBlue)"/>
+  <!-- curated -> search -->
+  <line x1="352" y1="197" x2="414" y2="197" stroke="#29B5E8" stroke-width="1.4" marker-end="url(#aBlue)"/>
+
+  <!-- semantic -> consumers -->
+  <line x1="558" y1="98"  x2="628" y2="65"  stroke="#29B5E8" stroke-width="1.4" marker-end="url(#aBlue)"/>
+  <line x1="558" y1="108" x2="628" y2="115" stroke="#29B5E8" stroke-width="1.4" marker-end="url(#aBlue)"/>
+  <line x1="558" y1="118" x2="628" y2="165" stroke="#29B5E8" stroke-width="1.4" marker-end="url(#aBlue)"/>
+  <line x1="558" y1="128" x2="628" y2="212" stroke="#29B5E8" stroke-width="1.4" marker-end="url(#aBlue)"/>
+  <!-- search -> reports -->
+  <line x1="558" y1="200" x2="628" y2="215" stroke="#29B5E8" stroke-width="1.4" stroke-dasharray="5,3" marker-end="url(#aBlue)"/>
+
+  <!-- blocked path -->
+  <path d="M83 88 Q83 262 700 262 L700 240" fill="none" stroke="#b3261e" stroke-width="1.4" stroke-dasharray="6,4"/>
+  <text x="392" y="257" font-size="8.5" font-weight="700" fill="#b3261e" text-anchor="middle">consumers never read raw directly</text>
+
+  <defs>
+    <marker id="aBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#29B5E8"/></marker>
+    <marker id="aGrey" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#8A999E"/></marker>
+    <marker id="aGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#0f7b46"/></marker>
+    <marker id="aPurple" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#7D44CF"/></marker>
+  </defs>
+</svg>
+
+<h2>The AI enrichment pattern</h2>
+<p class="sub">Filter, dedupe, estimate, score the remainder, aggregate in SQL. Each step
+before the model reduces what the model is paid to look at.</p>
+
+<div class="pipe">
+  <div class="pnode">Raw text<small>as delivered</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode">Filter<small>length, nulls, scope</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode">Dedupe<small>on business tuple</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode">Anti-join<small>unscored only</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode ai">Score<small>AI_CLASSIFY</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode out">Labels stored<small>append-only</small></div>
+  <div class="parrow">&#9654;</div>
+  <div class="pnode out">Aggregate<small>plain SQL</small></div>
+</div>
+
+<div class="versus">
+  <div class="vcol a">
+    <h4>Counting with retrieval</h4>
+    <ul>
+      <li>Returns the count of what was retrieved</li>
+      <li>No notion of completeness</li>
+      <li>Different answer on a re-run</li>
+      <li>Cost scales with every question asked</li>
+      <li>Looks like an answer</li>
+    </ul>
+  </div>
+  <div class="vcol b">
+    <h4>Counting over stored labels</h4>
+    <ul>
+      <li>Returns the count of the population</li>
+      <li>Complete by construction</li>
+      <li>Same answer every time</li>
+      <li>Model paid once, per row, ever</li>
+      <li>Auditable against the gold set</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Cost levers, in order of effect</h2>
+<div class="grid g2">
+  <div class="card">
+    <h4>Token credits</h4>
+    <ul style="font-size:.88rem;padding-left:17px;margin:6px 0">
+      <li><b>Reduce rows.</b> Filter and dedupe before the model. For measurement rather than enrichment, score a sample and report an interval.</li>
+      <li><b>Reduce tokens per row.</b> Ask for a label, not a paragraph explaining the label.</li>
+      <li><b>Never score twice.</b> Anti-join on the business tuple.</li>
+      <li><b>Right-size the model.</b> Fixed-purpose functions beat a general completion at the same job. Gate any swap on a labeled gold set and macro F1.</li>
+      <li><b>Estimate first.</b> <code>AI_COUNT_TOKENS</code> on a sample, multiplied out.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Warehouse credits</h4>
+    <ul style="font-size:.88rem;padding-left:17px;margin:6px 0">
+      <li><b>Materialize repetition.</b> A dashboard aggregation running per viewer is one scheduled table away from a point read.</li>
+      <li><b>Aggregate in SQL.</b> Not in Python, not in the browser.</li>
+      <li><b>Tag every workload.</b> <code>QUERY_TAG</code> is the only thing that attributes spend to a pipeline instead of a person.</li>
+      <li><b>Separate the agent warehouse.</b> Small, monitored, so exploration cannot borrow production's size.</li>
+      <li><b>Auto-suspend at sixty seconds</b> on anything interactive.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Repeatability gates</h2>
+<p class="sub">Six defects that pass every unit test, raise no error, and ship a wrong
+number. Each is one query. A gate returns rows only on failure.</p>
+
+<table>
+  <thead><tr><th style="width:30%">Defect</th><th style="width:34%">What it looks like</th><th>The gate</th></tr></thead>
+  <tbody>
+    <tr><td class="q">Valid-zero from a missed join</td>
+        <td>A record ranks last instead of being flagged unknown</td>
+        <td>Count rows that failed to match each dimension</td></tr>
+    <tr><td class="q">Fanout from undeclared cardinality</td>
+        <td>Sums inflate, averages deflate, nothing errors</td>
+        <td>Assert row count equals the declared grain</td></tr>
+    <tr><td class="q">Double count from dual-keyed writes</td>
+        <td>Every aggregate doubled, both keys look correct alone</td>
+        <td>Distinct on the business tuple versus raw count</td></tr>
+    <tr><td class="q">Look-ahead in a normalization</td>
+        <td>Backtest accuracy improves, production does not</td>
+        <td>Recompute one row at its cutoff and compare</td></tr>
+    <tr><td class="q">Stale input passing a freshness check</td>
+        <td>Pipeline reports healthy, inputs are frozen</td>
+        <td>Assert on <code>MAX(date)</code>, never <code>MIN</code>, never row count</td></tr>
+    <tr><td class="q">Hindsight overwrite of a published number</td>
+        <td>Accuracy history becomes unfalsifiable</td>
+        <td>Predictions append-only, stamped with the live version</td></tr>
+  </tbody>
+</table>
+
+<div class="callout bad">
+  <span class="ct">Run gates as a subagent</span>
+  Findings that share a context window with the work they are gating get rationalized.
+  Findings from a separate agent get acted on. A gate that warns and proceeds is
+  documentation, not a gate.
+</div>
+
+<h2>Sequencing the adoption</h2>
+<p class="sub">Do not build the whole stack before shipping anything.</p>
+<div class="grid g3">
+  <div class="card"><h4>1. Pick three metrics</h4><p style="font-size:.87rem;margin:0">The three that get asked about most. Not the three that are easiest.</p></div>
+  <div class="card"><h4>2. Conform their sources</h4><p style="font-size:.87rem;margin:0">Curated tables with declared grain and a gate query for each.</p></div>
+  <div class="card"><h4>3. Define them once</h4><p style="font-size:.87rem;margin:0">One semantic view, with the synonyms your stakeholders actually use.</p></div>
+  <div class="card"><h4>4. Add verified queries</h4><p style="font-size:.87rem;margin:0">The ten questions people really ask about those three metrics.</p></div>
+  <div class="card"><h4>5. Ask twenty times</h4><p style="font-size:.87rem;margin:0">Point one agent at it and ask the same question twenty times. Compare the answers.</p></div>
+  <div class="card"><h4>6. Widen</h4><p style="font-size:.87rem;margin:0">Only after step five is boring. If the twenty disagree, something below is still ambiguous.</p></div>
+</div>
+
+<div class="callout good">
+  <span class="ct">The metric to report upward</span>
+  Cost per answer, tracked by workload. A recurring question whose cost per answer is not
+  falling over time is a question that should have been pushed down a layer. That single
+  number turns the framework into something a finance stakeholder can hold you to.
+</div>
+
+<footer>
+  studio-ds-framework &middot; reference SQL, docs, and installable agent skills accompany this
+  page in the repository. Cost magnitudes shown here are ordinal; measure your own with
+  <code>sql/40_cost_observability.sql</code>.
+</footer>
+
+</div>
+</body>
+</html>
