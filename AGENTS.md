@@ -4,6 +4,18 @@ This repo is a decision framework for data science teams building analytics and
 AI workflows on Snowflake. It is documentation and reference SQL. It contains no
 credentials, no data, and no client-specific configuration.
 
+## Working boundaries
+
+- Start with the named workflow, objects, and files. Do not scan the entire account.
+- Read the relevant guide only; do not load every document into each conversation.
+- Use SQL/scripts for deterministic checks. Ask before broadening scope or launching
+  multiple agents. A skill is guidance, not a deterministic enforcement mechanism.
+- Stop after two unsuccessful attempts at the same operation and report the evidence.
+- Return summaries and small samples, not raw corpora or long query logs.
+- Keep client data, account identifiers, credentials, and measured usage out of this public repo.
+- Do not create objects in an account until the user approves the destination.
+- Do not run billable inference without approval of the preflight scope and estimate.
+
 ## What an agent should do here
 
 Help a team adopt the framework. That usually means one of four tasks.
@@ -22,14 +34,19 @@ when there is one.
 write before handing it over.
 
 **Measure.** Run the queries in `sql/40_cost_observability.sql` against their
-account and tell them where credits are going. This requires IMPORTED
-PRIVILEGES on the SNOWFLAKE database.
+account only when asked. Confirm products, CoCo interfaces, and date window first.
+Use the relevant usage-view permissions; do not assume ACCOUNTADMIN is required.
+Keep CoCo credits, SQL inference, Search, and warehouse compute distinct.
+
+**Reduce CoCo burn.** Follow `docs/08_coco_token_efficiency.md`. Measure credits
+per accepted task rather than treating all tokens or requests as equivalent.
 
 ## Conventions in the reference SQL
 
 - Names are source-neutral. `SIGNAL_*` and `OUTCOME_*`, never a provider name.
 - Every table comment declares its grain. Every grain has a gate query.
-- A gate returns rows only on failure. Zero rows means pass.
+- A gate returns rows only on failure. Missing, skipped, errored, or empty-source
+  checks do not count as passed.
 - Nulls are never coalesced to zero on a score or an index. Carry an explicit
   missing flag instead.
 - Features are computed as of a cutoff. Percentiles are ranked within a horizon.
@@ -45,9 +62,10 @@ PRIVILEGES on the SNOWFLAKE database.
 - Do not present a recommendation as a Snowflake product claim without checking
   the current docs. Feature availability changes.
 
-## Sequencing an adoption
+## Verification
 
-Do not build the whole layer cake before shipping anything. Take the three
-most-requested metrics, drive them from raw through the semantic layer, point one
-agent at them, and ask the same question twenty times. If the twenty answers do
-not agree, something below is still ambiguous. Widen only after that is boring.
+Run `node --test tests/repository.test.mjs` for local checks. Run the read-only
+`tests/enrichment_regression.sql` in Snowflake for scoring-key behavior.
+`sql/30` prepares and estimates; `sql/31` is the separately approved inference step.
+The measured exercise and migration limits are in `docs/09_measured_exercise.md`.
+Never describe static tests or compilation as evidence of model quality or savings.

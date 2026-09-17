@@ -47,21 +47,30 @@ Enforcing this in the skill's acceptance criteria is what makes a generated repo
 
 ## Cost characteristics
 
-Search bills in two places: an indexing and refresh charge that scales with corpus size and
-refresh frequency, and a serving charge that scales with queries. The observability queries in
-`sql/40_cost_observability.sql` separate the two.
+For standard interactive Search, costs include warehouse refresh, embedding new/changed
+rows, serving indexed data, storage, and applicable cloud services. Serving is charged
+by indexed GB-month while available, including idle time, not per returned chunk or
+query. Batch Search has its own billing model. The queries in `sql/40_cost_observability.sql`
+separate embedding and serving; they do not include refresh warehouse or storage cost.
 
-Three cost rules:
+Practical cost rules:
 
-**Set the refresh lag to the business need.** A corpus that changes weekly does not need a
-one-minute target lag. Refresh frequency is usually the larger of the two charges and the one
-most often set carelessly.
+**Set the refresh lag to the business need.** A corpus that changes weekly does not need
+a one-minute target lag. Define service primary keys, update sources incrementally,
+and avoid replacing source tables or changing their schema unnecessarily: full refreshes
+can re-embed the corpus. Check measured usage rather than assuming indexing dominates.
 
 **Index the text, not the table.** Restrict the indexed column set to what retrieval actually
 needs, and filter to the corpus that gets queried. Indexing an archive nobody searches is a
 recurring charge for nothing.
 
-**Retrieve fewer, better chunks.** Retrieved chunks become prompt tokens downstream. Cutting
-the retrieval limit from twenty to six reduces both the Search charge and the synthesis token
-charge, and usually improves the output, because the model is no longer reconciling marginal
-passages.
+**Retrieve fewer, better chunks.** Use metadata filters, relevance evaluation, and a total
+context-token limit. Reducing retrieved text reduces downstream synthesis tokens, not
+the indexed-size serving charge. Six chunks is a starting point, not a universal optimum;
+measure whether omitted evidence hurts answer quality.
+
+**Suspend unused serving.** Use supported manual or automatic serving suspension for
+idle development services when the startup/freshness tradeoff is acceptable.
+
+Sources: [Search cost considerations](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs)
+and [batch Search metering](https://docs.snowflake.com/en/sql-reference/account-usage/cortex_search_batch_query_usage_history).

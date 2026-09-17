@@ -10,17 +10,25 @@ description: >
 
 # Metric report
 
-A reporting skill. Fixed questions, fixed structure, deterministic figures. The
-agent assembles; it does not derive.
+A reporting skill. Fixed questions and structure; figures come from approved SQL.
+The agent assembles and interprets. LLM prose is not deterministic.
+
+## Setup
+
+Require the repo root (or absolute paths to the adapted SQL), target semantic view,
+reporting period, metric set, chart specifications, approved gate runner, and optional
+Search service. Stop if any required dependency is missing. These files are not bundled
+when this skill folder alone is installed. Do not discover the whole account to infer them.
 
 ## Preconditions
 
 Check these first. If any fails, stop and report the failure. Do not proceed
 with a partial report.
 
-1. **Gates pass.** Run `sql/50_validation_gates.sql`. Every gate must return
-   zero rows. A gate returning rows means the inputs are wrong, and a report
-   built on them will be wrong plausibly.
+1. **Gates pass.** Run the approved SQL/script gate runner, not the unadapted
+   `sql/50_validation_gates.sql` starter. Require successful execution, nonempty
+   expected source populations, no disabled checks, and zero failing rows.
+   Missing evidence, skipped checks, or any failure means STOP.
 2. **Freshness.** The curated layer's latest load date matches the expected
    as-of date for the reporting period. Assert on the maximum date, not the
    minimum, and not on row count.
@@ -38,10 +46,11 @@ with a partial report.
    Deltas come from two calls to the same metric, never from two different
    definitions of it.
 
-3. **Context.** Query the Cortex Search service for passages covering the
-   reporting period. Retrieve six chunks, not twenty; marginal passages cost
-   tokens twice, once in retrieval and again in synthesis. Search supplies
-   explanation only. It never supplies a number, and it never supplies a count.
+3. **Context.** If configured and needed, query Search with the reporting period
+   and corpus filters. Start with six relevant chunks within the agreed context
+   budget; expand only when missing evidence justifies it. Retrieved text costs
+   downstream synthesis tokens, not a per-chunk interactive Search serving fee.
+   Search supplies evidence, never population counts.
 
 4. **Charts.** Render from the approved chart set. Select and parameterize an
    existing specification; do not invent a chart shape per run. One chart per
@@ -70,8 +79,16 @@ A reviewer must be able to check these without rerunning the work.
 - The whole run should be a handful of semantic-layer calls plus one retrieval
   call. If it is running dozens of exploratory queries, the metric set is
   incomplete; fix the semantic layer rather than letting the agent compensate.
-- Set `QUERY_TAG` at the start of the run so the report's spend is attributable:
+- Set `QUERY_TAG` for SQL attribution, not attribution of the CoCo conversation:
   `ALTER SESSION SET QUERY_TAG = 'workload=metric_report;period=<period>';`
 - Never call an AI function on a row set inside this skill. Labels are
-  materialized upstream by `sql/30_incremental_ai_enrichment.sql`. Scoring at
+  materialized upstream by the separately approved `sql/31_score_approved_batch.sql`. Scoring at
   report time pays per run for work already done.
+- Stop after two failed attempts at one operation. Do not spawn additional agents
+  to retry the same task. Use an independent reviewer only when the caller requests it.
+- Use a fixed SQL/template runner without an agent when no interpretation is needed.
+
+## Output
+
+Report, as-of date, metric/query references, gate evidence, and missing limitations.
+No invented savings. Obtain publication approval separately from report generation.

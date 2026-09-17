@@ -14,13 +14,22 @@ description: >
 This skill produces no analysis. It produces a verdict: PASS or STOP. Its value
 is entirely in the runs where it says STOP.
 
-**Run this as a subagent.** Findings that share a context window with the work
-they are gating get rationalized. Findings from a separate agent get acted on.
+Run the checks as SQL or scripts. Use this skill as an independent review subagent
+when requested for high-risk work; independence does not require repeating every
+deterministic query in a second LLM loop.
+
+## Setup
+
+Require the repo root or approved absolute check paths, target dataset, expected
+source population, horizon, model requirements, and baseline acceptance thresholds.
+Missing inputs mean STOP. Do not infer them from an account-wide scan.
 
 ## Verdict rules
 
 - Any gate returning rows is a **STOP**. Report which gate, how many rows, and
   the identifying keys. Do not proceed to scoring.
+- Errors, missing check files, disabled/skipped checks, or an unexpectedly empty
+  source mean STOP, not PASS. Stop after two failed execution attempts.
 - There is no partial pass. Do not offer to score "the clean subset" unless the
   caller explicitly asks after seeing the failure.
 - Do not repair the data as part of this skill. Diagnosis and remediation are
@@ -28,8 +37,10 @@ they are gating get rationalized. Findings from a separate agent get acted on.
 
 ## Checks
 
-Run `sql/50_validation_gates.sql` in full. Each check returns rows only on
-failure.
+Run the team's adapted and approved gate runner. `sql/50_validation_gates.sql`
+is a starter containing setup DDL and incomplete analytical checks; do not run it
+unchanged or label it a production gate. Its limitations are documented in
+`docs/07_repeatability_gates.md`. Each implemented check returns rows only on failure.
 
 | Gate | Defect | What a hit means |
 |---|---|---|
@@ -38,8 +49,8 @@ failure.
 | 2 | Fanout at grain | Sums inflated, averages deflated |
 | 2b | Duplicate reference IDs | The usual cause of gate 2 |
 | 3 | Dual-keyed double count | Every aggregate doubled |
-| 4 | Look-ahead in features | Backtest accuracy is not real |
-| 4b | Outcome known before cutoff | The target is in the features |
+| 4 | Point-in-time feature mismatch | Recomputed cutoff feature differs from the stored feature |
+| 4b | Target in features | Label information is present in a predictor before it was knowable |
 | 5 | Stale input | Pipeline reports healthy, inputs are frozen |
 | 6 | Hindsight overwrite | Accuracy history is unfalsifiable |
 

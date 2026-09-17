@@ -1,192 +1,112 @@
--- 40_cost_observability.sql
--- Token and warehouse spend, by workload. Read-only against SNOWFLAKE.ACCOUNT_USAGE.
---
--- Requires IMPORTED PRIVILEGES on the SNOWFLAKE database (ACCOUNTADMIN grants it).
--- ACCOUNT_USAGE views lag by roughly 45 minutes to three hours.
+-- Read-only, independent queries. Last 30 complete calendar days in session timezone.
+-- Requires access to the relevant ACCOUNT_USAGE views, e.g. SNOWFLAKE.USAGE_VIEWER.
+-- No rows means no observed records, not proof of no usage. Check access/latency first.
+-- Product boundaries differ: these outputs are NOT an additive account invoice.
+-- Sources and latency: docs/06_cost_model.md. Reviewed 2026-09-17.
 
--- ---------------------------------------------------------------------------
--- 1. The two meters, side by side, by day. Start here.
--- ---------------------------------------------------------------------------
+-- 1. Current AI Functions credits by day, function and model, including in-flight usage.
+SELECT DATE_TRUNC('day', START_TIME) AS USAGE_DAY, FUNCTION_NAME, MODEL_NAME,
+       SUM(CREDITS) AS AI_FUNCTION_CREDITS,
+       COUNT(DISTINCT QUERY_ID) AS QUERIES
+FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
+GROUP BY 1, 2, 3
+ORDER BY USAGE_DAY DESC, AI_FUNCTION_CREDITS DESC;
 
-WITH tokens AS (
-    SELECT DATE_TRUNC('day', START_TIME) AS D, SUM(TOKEN_CREDITS) AS TOKEN_CREDITS
-    FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
-    WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
-    GROUP BY 1
-),
-compute AS (
-    SELECT DATE_TRUNC('day', START_TIME) AS D, SUM(CREDITS_USED) AS WH_CREDITS
-    FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
-    WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
-    GROUP BY 1
-)
-SELECT
-    COALESCE(t.D, c.D)                        AS USAGE_DAY,
-    COALESCE(c.WH_CREDITS, 0)                 AS WAREHOUSE_CREDITS,
-    COALESCE(t.TOKEN_CREDITS, 0)              AS TOKEN_CREDITS,
-    COALESCE(c.WH_CREDITS, 0) + COALESCE(t.TOKEN_CREDITS, 0) AS TOTAL_CREDITS
-FROM tokens t
-FULL OUTER JOIN compute c ON c.D = t.D
-ORDER BY USAGE_DAY DESC;
+-- 2. Tokens/pages by metric. Do not sum CREDITS after flattening METRICS.
+SELECT usage.FUNCTION_NAME, usage.MODEL_NAME,
+       metric.VALUE:key:metric::VARCHAR AS METRIC_TYPE,
+       metric.VALUE:key:unit::VARCHAR AS UNIT,
+       SUM(metric.VALUE:value::NUMBER) AS UNITS
+FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY usage,
+     LATERAL FLATTEN(INPUT => usage.METRICS) metric
+WHERE usage.START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND usage.START_TIME < CURRENT_DATE()
+GROUP BY 1, 2, 3, 4
+ORDER BY UNITS DESC;
 
--- ---------------------------------------------------------------------------
--- 2. Token credits by function and model. Shows which call is the line item
---    and whether an expensive model is doing a cheap model's job.
--- ---------------------------------------------------------------------------
-
-SELECT
-    FUNCTION_NAME,
-    MODEL_NAME,
-    SUM(TOKENS)                                    AS TOKENS,
-    SUM(TOKEN_CREDITS)                             AS TOKEN_CREDITS,
-    RATIO_TO_REPORT(SUM(TOKEN_CREDITS)) OVER ()    AS SHARE_OF_TOKEN_SPEND
-FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
-WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
-GROUP BY 1, 2
-ORDER BY TOKEN_CREDITS DESC;
-
--- ---------------------------------------------------------------------------
--- 3. The most expensive individual AI queries.
---
---    CORTEX_FUNCTIONS_QUERY_USAGE_HISTORY carries no timestamp, so it must be
---    joined to QUERY_HISTORY to be filtered by date. This catches the query
---    that ran on more rows than anyone intended.
--- ---------------------------------------------------------------------------
-
-SELECT
-    q.QUERY_TAG,
-    q.USER_NAME,
-    q.WAREHOUSE_NAME,
-    c.FUNCTION_NAME,
-    c.MODEL_NAME,
-    c.TOKENS,
-    c.TOKEN_CREDITS,
-    q.START_TIME,
-    LEFT(q.QUERY_TEXT, 160) AS QUERY_PREVIEW
-FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_QUERY_USAGE_HISTORY c
-JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY q ON q.QUERY_ID = c.QUERY_ID
-WHERE q.START_TIME >= DATEADD('day', -14, CURRENT_DATE())
-ORDER BY c.TOKEN_CREDITS DESC
+-- 3. Expensive SQL inference queries. One usage row is not one scored item.
+SELECT QUERY_ID, QUERY_TAG, USER_ID, WAREHOUSE_ID,
+       MIN(START_TIME) AS FIRST_USAGE_WINDOW,
+       SUM(CREDITS) AS AI_FUNCTION_CREDITS,
+       BOOLOR_AGG(IS_COMPLETED) AS COMPLETED_IN_WINDOW
+FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
+GROUP BY QUERY_ID, QUERY_TAG, USER_ID, WAREHOUSE_ID
+ORDER BY AI_FUNCTION_CREDITS DESC
 LIMIT 50;
 
--- ---------------------------------------------------------------------------
--- 4. AISQL spend attributed to a workload via QUERY_TAG.
---
---    QUERY_TAG is the only thing that makes spend attributable to a pipeline
---    rather than a person. Set it in every scheduled job:
---      ALTER SESSION SET QUERY_TAG = 'pipeline=text_scoring;env=prod';
--- ---------------------------------------------------------------------------
-
-SELECT
-    COALESCE(NULLIF(QUERY_TAG, ''), '(untagged)') AS WORKLOAD,
-    FUNCTION_NAME,
-    MODEL_NAME,
-    COUNT(*)              AS CALLS,
-    SUM(TOKENS)           AS TOKENS,
-    SUM(TOKEN_CREDITS)    AS TOKEN_CREDITS
-FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AISQL_USAGE_HISTORY
-WHERE USAGE_TIME >= DATEADD('day', -30, CURRENT_DATE())
-GROUP BY 1, 2, 3
-ORDER BY TOKEN_CREDITS DESC;
-
--- ---------------------------------------------------------------------------
--- 5. Cortex Search: indexing versus serving.
---
---    CONSUMPTION_TYPE separates the two. If indexing dominates, the refresh
---    lag is set tighter than the business needs.
--- ---------------------------------------------------------------------------
-
-SELECT
-    SERVICE_NAME,
-    CONSUMPTION_TYPE,
-    SUM(CREDITS) AS CREDITS,
-    SUM(TOKENS)  AS TOKENS
-FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY
-WHERE USAGE_DATE >= DATEADD('day', -30, CURRENT_DATE())
+-- 4. CoCo includes CLI, Desktop and Snowsight; keep interfaces distinct.
+SELECT LOWER(INTERFACE) AS INTERFACE, USER_NAME,
+       SUM(TOKEN_CREDITS) AS COCO_CREDITS, SUM(TOKENS) AS TOKENS,
+       COUNT(DISTINCT REQUEST_ID) AS REQUESTS,
+       SUM(TOKEN_CREDITS) / NULLIF(COUNT(DISTINCT REQUEST_ID), 0) AS CREDITS_PER_REQUEST
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWFLAKE_COCO_USAGE_HISTORY
+WHERE USAGE_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND USAGE_TIME < CURRENT_DATE()
 GROUP BY 1, 2
-ORDER BY SERVICE_NAME, CREDITS DESC;
+ORDER BY COCO_CREDITS DESC;
 
--- ---------------------------------------------------------------------------
--- 6. Agent and Analyst spend. Cost per question, by surface.
--- ---------------------------------------------------------------------------
+-- 5. CoCo input/output/cache credit breakdown. Tokens do not all have the same rate.
+SELECT LOWER(usage.INTERFACE) AS INTERFACE, model.KEY AS MODEL_NAME,
+       SUM(model.VALUE:input::FLOAT) AS INPUT_CREDITS,
+       SUM(model.VALUE:output::FLOAT) AS OUTPUT_CREDITS,
+       SUM(model.VALUE:cache_read_input::FLOAT) AS CACHE_READ_CREDITS,
+       SUM(model.VALUE:cache_write_input::FLOAT) AS CACHE_WRITE_CREDITS
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWFLAKE_COCO_USAGE_HISTORY usage,
+     LATERAL FLATTEN(INPUT => usage.CREDITS_GRANULAR, OUTER => TRUE) model
+WHERE usage.USAGE_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND usage.USAGE_TIME < CURRENT_DATE()
+GROUP BY 1, 2
+ORDER BY INTERFACE, MODEL_NAME;
 
-SELECT
-    AGENT_NAME,
-    COUNT(DISTINCT REQUEST_ID)                          AS REQUESTS,
-    SUM(TOKENS)                                         AS TOKENS,
-    SUM(TOKEN_CREDITS)                                  AS TOKEN_CREDITS,
-    DIV0(SUM(TOKEN_CREDITS), COUNT(DISTINCT REQUEST_ID)) AS CREDITS_PER_REQUEST
+-- 6. CoCo request drill-down. A request is not necessarily a completed user task.
+SELECT INTERFACE, USER_NAME, REQUEST_ID, PARENT_REQUEST_ID, USAGE_TIME, TOKEN_CREDITS, TOKENS
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWFLAKE_COCO_USAGE_HISTORY
+WHERE USAGE_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND USAGE_TIME < CURRENT_DATE()
+ORDER BY TOKEN_CREDITS DESC
+LIMIT 25;
+
+-- 7. Search serving and embedding; excludes refresh warehouse and storage costs.
+SELECT DATABASE_NAME, SCHEMA_NAME, SERVICE_NAME, CONSUMPTION_TYPE,
+       SUM(CREDITS) AS SEARCH_CREDITS, SUM(TOKENS) AS EMBEDDING_TOKENS
+FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY
+WHERE USAGE_DATE >= DATEADD('day', -30, CURRENT_DATE()) AND USAGE_DATE < CURRENT_DATE()
+GROUP BY 1, 2, 3, 4
+ORDER BY DATABASE_NAME, SCHEMA_NAME, SERVICE_NAME, SEARCH_CREDITS DESC;
+
+-- 8. Direct Cortex Agents surface. CoCo/CoWork usage must be measured separately.
+SELECT AGENT_DATABASE_NAME, AGENT_SCHEMA_NAME, AGENT_NAME,
+       COUNT(DISTINCT REQUEST_ID) AS REQUESTS, SUM(TOKEN_CREDITS) AS AGENT_CREDITS,
+       SUM(TOKEN_CREDITS) / NULLIF(COUNT(DISTINCT REQUEST_ID), 0) AS CREDITS_PER_REQUEST
 FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY
-WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
-GROUP BY 1
-ORDER BY TOKEN_CREDITS DESC;
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
+GROUP BY 1, 2, 3
+ORDER BY AGENT_CREDITS DESC;
 
-SELECT
-    DATE_TRUNC('day', START_TIME)         AS USAGE_DAY,
-    SUM(REQUEST_COUNT)                    AS ANALYST_REQUESTS,
-    SUM(CREDITS)                          AS CREDITS,
-    DIV0(SUM(CREDITS), SUM(REQUEST_COUNT)) AS CREDITS_PER_REQUEST
+-- 9. Direct Analyst calls only, not the Analyst portion already billed by an agent.
+SELECT DATE_TRUNC('day', START_TIME) AS USAGE_DAY,
+       SUM(REQUEST_COUNT) AS ANALYST_REQUESTS, SUM(CREDITS) AS ANALYST_CREDITS,
+       SUM(CREDITS) / NULLIF(SUM(REQUEST_COUNT), 0) AS CREDITS_PER_REQUEST
 FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_ANALYST_USAGE_HISTORY
-WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
 GROUP BY 1
 ORDER BY 1 DESC;
 
--- ---------------------------------------------------------------------------
--- 7. Warehouse credits attributed to a repeated query shape.
---
---    QUERY_PARAMETERIZED_HASH groups a query across its parameter values, so a
---    dashboard running the same aggregation for every viewer shows up as one
---    row with a high execution count. That is the materialization candidate.
--- ---------------------------------------------------------------------------
+-- 10. Warehouse meter includes idle time. Keep separate from per-query attribution.
+SELECT DATE_TRUNC('day', START_TIME) AS USAGE_DAY, WAREHOUSE_NAME,
+       SUM(CREDITS_USED_COMPUTE) AS COMPUTE_CREDITS,
+       SUM(CREDITS_USED_CLOUD_SERVICES) AS CLOUD_SERVICES_CREDITS_BEFORE_ADJUSTMENT
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
+GROUP BY 1, 2
+ORDER BY USAGE_DAY DESC, COMPUTE_CREDITS DESC;
 
-SELECT
-    QUERY_PARAMETERIZED_HASH,
-    COALESCE(NULLIF(QUERY_TAG, ''), '(untagged)') AS WORKLOAD,
-    WAREHOUSE_NAME,
-    COUNT(*)                                      AS EXECUTIONS,
-    SUM(CREDITS_ATTRIBUTED_COMPUTE)               AS CREDITS,
-    AVG(CREDITS_ATTRIBUTED_COMPUTE)               AS CREDITS_PER_EXECUTION
+-- 11. Repeated query shapes. Attribution excludes warehouse idle time.
+SELECT QUERY_PARAMETERIZED_HASH, WAREHOUSE_NAME,
+       COUNT(DISTINCT QUERY_ID) AS EXECUTIONS,
+       SUM(CREDITS_ATTRIBUTED_COMPUTE) AS ATTRIBUTED_COMPUTE_CREDITS,
+       SUM(CREDITS_ATTRIBUTED_COMPUTE) / NULLIF(COUNT(DISTINCT QUERY_ID), 0) AS CREDITS_PER_EXECUTION
 FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY
-WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE())
-GROUP BY 1, 2, 3
-HAVING COUNT(*) > 20
-ORDER BY CREDITS DESC
+WHERE START_TIME >= DATEADD('day', -30, CURRENT_DATE()) AND START_TIME < CURRENT_DATE()
+GROUP BY 1, 2
+HAVING COUNT(DISTINCT QUERY_ID) > 20
+ORDER BY ATTRIBUTED_COMPUTE_CREDITS DESC
 LIMIT 50;
-
--- ---------------------------------------------------------------------------
--- 8. Cost per answer, by workload. The metric to report.
---
---    A recurring workload whose cost per answer is not falling over time is a
---    workload that should have been pushed down a layer.
--- ---------------------------------------------------------------------------
-
-WITH ai AS (
-    SELECT
-        COALESCE(NULLIF(QUERY_TAG, ''), '(untagged)') AS WORKLOAD,
-        DATE_TRUNC('week', USAGE_TIME)                AS WK,
-        COUNT(*)                                      AS CALLS,
-        SUM(TOKEN_CREDITS)                            AS TOKEN_CREDITS
-    FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AISQL_USAGE_HISTORY
-    WHERE USAGE_TIME >= DATEADD('day', -90, CURRENT_DATE())
-    GROUP BY 1, 2
-),
-wh AS (
-    SELECT
-        COALESCE(NULLIF(QUERY_TAG, ''), '(untagged)') AS WORKLOAD,
-        DATE_TRUNC('week', START_TIME)                AS WK,
-        SUM(CREDITS_ATTRIBUTED_COMPUTE)               AS WH_CREDITS
-    FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY
-    WHERE START_TIME >= DATEADD('day', -90, CURRENT_DATE())
-    GROUP BY 1, 2
-)
-SELECT
-    COALESCE(a.WORKLOAD, w.WORKLOAD)                        AS WORKLOAD,
-    COALESCE(a.WK, w.WK)                                    AS WEEK_START,
-    COALESCE(a.CALLS, 0)                                    AS AI_CALLS,
-    COALESCE(a.TOKEN_CREDITS, 0)                            AS TOKEN_CREDITS,
-    COALESCE(w.WH_CREDITS, 0)                               AS WAREHOUSE_CREDITS,
-    DIV0(COALESCE(a.TOKEN_CREDITS, 0) + COALESCE(w.WH_CREDITS, 0),
-         NULLIF(COALESCE(a.CALLS, 0), 0))                   AS CREDITS_PER_CALL
-FROM ai a
-FULL OUTER JOIN wh w ON w.WORKLOAD = a.WORKLOAD AND w.WK = a.WK
-ORDER BY WORKLOAD, WEEK_START DESC;

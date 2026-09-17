@@ -33,9 +33,10 @@ way DS capacity gets absorbed. Answer it, and wait to see if it recurs.
 
 ## Cost characteristics
 
-Visualization is the cheapest tool in the framework and the only one with zero token cost. The
-expense is warehouse time, and it is almost always in the query behind the chart rather than
-the chart itself.
+Rendering an existing chart from known SQL requires no model inference. Asking CoCo to
+generate or interpret it still uses tokens. Warehouse, application hosting, storage, and
+refresh costs remain; there is no universal ranking that makes every chart cheaper than
+every agent response.
 
 Two rules keep it cheap:
 

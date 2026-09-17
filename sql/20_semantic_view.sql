@@ -87,16 +87,15 @@ CREATE OR REPLACE SEMANTIC VIEW STUDIO_DS.SEMANTIC.TITLE_PERFORMANCE
     'If a question about demand signals does not specify a horizon, treat it as
      UNCLEAR and ask which horizon (3, 7, 14, 21, or 28 days before release).'
 
-  -- Verified queries. Each one removes a question from the generation path:
-  -- the answer is retrieved rather than re-derived. Add one every time a
-  -- reviewed answer is agreed with a stakeholder.
+  -- Verified examples guide SQL generation; they are not cached results.
+  -- Validate the embedded SQL independently before registering the examples.
   AI_VERIFIED_QUERIES (
 
     total_by_year AS (
       QUESTION 'What was total opening revenue by release year?'
       ONBOARDING_QUESTION TRUE
       VERIFIED_BY '(STEWARD = data_stewards)'
-      SQL 'SELECT t.release_year, SUM(o.f_outcome_value) AS total_outcome
+      SQL 'SELECT YEAR(t.RELEASE_DATE) AS release_year, SUM(o.OUTCOME_VALUE) AS total_outcome
              FROM STUDIO_DS.CURATED.TITLE_OUTCOME o
              JOIN STUDIO_DS.CURATED.TITLE t ON t.TITLE_ID = o.TITLE_ID
             WHERE o.OUTCOME_NAME = ''OPENING_REVENUE''

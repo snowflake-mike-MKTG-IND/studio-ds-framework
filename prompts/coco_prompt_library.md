@@ -3,6 +3,32 @@
 Prompts for working through the framework with Cortex Code, grouped by the four
 adoption tasks. Replace bracketed placeholders.
 
+Begin with a bounded task. Name objects and files rather than requesting an account-wide
+scan. State whether SQL execution, DDL, inference, and publication are permitted.
+
+## Use CoCo efficiently
+
+```text
+Use only [FILES / OBJECTS] to complete [TASK]. Acceptance checks: [CHECKS].
+Return a concise result and evidence. Do not read raw corpora into chat, scan the
+whole account, run model inference, or create objects. Stop after two failed
+attempts at the same operation and report the blocker. Ask before widening scope.
+```
+
+```text
+Read docs/08_coco_token_efficiency.md. Review this workflow: [WORKFLOW]. Separate
+CoCo authoring from repeat execution. Identify deterministic work that can run as
+SQL/scripts, context that can be removed, and where a stronger model is genuinely
+needed. Preserve the acceptance tests. Do not implement changes yet.
+```
+
+```text
+Prepare a short handoff for a new conversation: objective, decisions, current
+files/objects, tests already run, unresolved errors, and the next action. Do not
+repeat raw tool output or the whole conversation. Do not save client details to
+this public repo.
+```
+
 ## Assess the current stack
 
 ```
@@ -71,9 +97,11 @@ reviewer can check without rerunning the work.
 ```
 
 ```
-Read sql/30_incremental_ai_enrichment.sql. Convert [OBJECT] from full re-scoring
-to incremental scoring keyed on the business tuple. Show me the token estimate
-for the first run and for a typical subsequent run.
+Read sql/30_incremental_ai_enrichment.sql and sql/31_score_approved_batch.sql.
+Adapt [OBJECT] to content- and scorer-version-keyed reuse. Cover nullable fields,
+changed inputs/config, failed outputs, and single-writer execution. Estimate every
+actual AI call over a frozen sample. Show coverage and input tokens; output tokens
+and other billable components are separate. Do not run inference or deploy DDL.
 ```
 
 ## Add verified queries
@@ -88,10 +116,11 @@ agreed figure.
 ## Measure cost
 
 ```
-Run the queries in sql/40_cost_observability.sql against this account. Tell me
-the split between warehouse and token credits over the last thirty days, the
-three largest token line items, and whether Cortex Search spend is dominated by
-indexing or serving.
+Use sql/40_cost_observability.sql as reference for [PRODUCTS] over [DATE RANGE].
+For CoCo, report [CLI / DESKTOP / SNOWSIGHT / ALL SEPARATELY]. Select only relevant
+queries. Report credits, exact source, period, and coverage; distinguish warehouse
+compute, AI Functions, CoCo, and Search. Do not add overlapping meters or treat
+missing usage as zero. No DDL or model inference.
 ```
 
 ```
@@ -102,23 +131,28 @@ materialization candidate and what the saving would be.
 
 ```
 Before we run [AI FUNCTION] over [TABLE], estimate the cost. Use AI_COUNT_TOKENS
-on a sample, multiply to the full row count, and tell me what a smaller model
-would cost for the same task. Do not run the batch.
+with the actual function, model if applicable, and full prompt/config on a
+representative sample. Report eligible rows, missing estimates, input-token
+projection and uncertainty. Output tokens are additional where billed. Compare
+candidate approaches only with the same quality bar. Do not run the batch.
 ```
 
 ## Establish the guardrails
 
 ```
 Set up cost guardrails for this account per docs/06_cost_model.md: a QUERY_TAG
-convention for our pipelines, a resource monitor on any warehouse an agent can
-reach, and a budget covering the Cortex services. Show me the SQL and wait for
-approval before executing anything.
+convention for SQL pipelines, warehouse resource monitors, and separate AI budget
+and CoCo per-user limit options. Explain notification versus enforcement and
+metering latency. Ask for scope and limits. Show the configuration and wait for
+approval before executing anything. Resource monitors do not cap AI-service spend.
 ```
 
 ## Before publishing a number
 
 ```
-Run the model-validation-gate skill as a subagent against [DATASET]. Report the
-verdict verbatim. If it says STOP, do not proceed to scoring and do not repair
-the data; tell me what failed and what the remediation would be.
+Run the approved deterministic checks at [CHECK PATH] against [DATASET]. Require
+nonempty expected sources and successful execution of every enabled check.
+Missing, disabled, errored, or failed checks mean STOP. Do not repair or score.
+Use the model-validation-gate skill for an independent review only if requested.
+Return the verdict and evidence without a second discovery pass.
 ```

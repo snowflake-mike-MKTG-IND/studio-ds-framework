@@ -68,9 +68,25 @@ query per check and trivially automatable.
 an agent workflow this means the gate skill's failure path is stop-and-report, with no fallback
 that continues.
 
-**A gate runs as a subagent.** Findings that arrive in the same context as the work being
-gated get rationalized. Findings from a separate agent get acted on. This sounds like a small
-thing and is not.
+**Execute checks deterministically.** Run SQL/scripts and require a blocking result before
+publication. Use an independent reviewer for high-risk interpretation, not a new agent
+for every routine assertion. Errors, skipped checks, missing files, and an unexpectedly
+empty source are STOP or NOT VALIDATED, never PASS.
+
+## Scope of these examples
+
+`sql/50_validation_gates.sql` is an analytical starter, not a production gate runner.
+It includes setup DDL and assumes adapted `sql/00`, `sql/10`, and the text table in
+`sql/30`. Gate 4 checks whether later-dated source rows exist; it does not establish
+which rows a feature actually used. Gate 4b is disabled by `AND FALSE` and requires a
+training-specific implementation. Future outcomes are valid labels for historical
+training examples, not valid pre-cutoff features. Gate 6 detects multiple recorded
+values, not an UPDATE that erased the prior row. Protect and snapshot the prediction
+history separately. Do not promote these checks unchanged or claim they certify a model.
+
+The enrichment-specific checks in `sql/32_enrichment_quality.sql` and read-only
+`tests/enrichment_regression.sql` cover the token-efficiency example. They do not
+replace point-in-time feature validation or a complete production gate runner.
 
 ## Adding to the suite
 

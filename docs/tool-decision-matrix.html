@@ -3,9 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="snowflake-source" content="cortex-agent-authored" />
 <title>Tool Decision Matrix for Data Science on Snowflake</title>
+<script type="application/json" id="snowflake-report-metadata">
+{
+  "generated": "2026-09-17",
+  "intent": "Reference guide for DS teams reducing Snowflake and CoCo inference costs without losing quality",
+  "dataSources": [
+    {"type": "file", "path": "docs/01_decision_framework.md"},
+    {"type": "file", "path": "docs/06_cost_model.md"},
+    {"type": "file", "path": "docs/08_coco_token_efficiency.md"},
+    {"type": "file", "path": "docs/09_measured_exercise.md"}
+  ],
+  "sections": [
+    {"id": "cost-drivers", "title": "Cost drivers", "producerNotes": "Qualitative mechanisms, not measured costs or a product ranking."},
+    {"id": "coco-practice", "title": "Working efficiently with CoCo", "producerNotes": "Operating guidance; no client data or measured savings."},
+    {"id": "measurement", "title": "Measure useful output", "producerNotes": "Use private workload measurements; do not infer savings from fixtures."}
+  ]
+}
+</script>
 <style>
   :root{
+    color-scheme:light dark;
     --sf-blue:#29B5E8; --mid-blue:#11567F; --iceberg:#003545; --winter:#24323D;
     --star-blue:#71D3DC; --valencia:#FF9F36; --purple-moon:#7D44CF; --first-light:#D45B90;
     --windy:#8A999E;
@@ -20,6 +39,10 @@
        background:var(--bg);color:var(--ink);margin:0;padding:0 20px 80px;line-height:1.55;
        -webkit-font-smoothing:antialiased}
   .wrap{max-width:1080px;margin:0 auto}
+  .table-wrap{overflow-x:auto;max-width:100%}
+  .table-wrap table{min-width:660px}
+  img,svg{max-width:100%;height:auto}
+  a{color:var(--accent-strong);text-underline-offset:3px}
   h1,h2,h3,h4{color:var(--ink-strong);line-height:1.25}
   h1{font-size:2.05rem;margin:0 0 8px;letter-spacing:-.02em}
   h2{font-size:1.45rem;margin:44px 0 4px}
@@ -34,7 +57,7 @@
 
   .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--card)}
   .grid{display:grid;gap:14px;margin:16px 0}
-  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
   .g3{grid-template-columns:repeat(auto-fit,minmax(228px,1fr))}
   .g5{grid-template-columns:repeat(auto-fit,minmax(186px,1fr))}
 
@@ -91,12 +114,6 @@
   .kv{font-size:.76rem;color:var(--muted);margin:2px 0}
   .kv b{color:var(--ink);font-weight:600}
 
-  /* cost scale */
-  .scale{display:flex;flex-direction:column;gap:9px;margin:16px 0}
-  .srow{display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center;font-size:.86rem}
-  .sbar{height:22px;border-radius:4px;display:flex;align-items:center;padding:0 9px;
-        color:#fff;font-size:.7rem;font-weight:700;letter-spacing:.03em;white-space:nowrap}
-
   /* decision tree */
   .tree{margin:20px 0 6px}
   .tnode{display:flex;justify-content:center}
@@ -135,7 +152,7 @@
   .vcol li{padding:4px 0}
 
   code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84em;
-       background:var(--card2);padding:1px 5px;border-radius:3px}
+       background:var(--card2);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
   footer{margin-top:52px;padding-top:16px;border-top:1px solid var(--line);
          font-size:.8rem;color:var(--muted)}
   @media (max-width:640px){
@@ -143,7 +160,18 @@
     .rung .cst{text-align:left}
     .r1,.r2,.r3,.r4,.r5{margin-left:0}
     .versus{grid-template-columns:1fr}
-    .srow{grid-template-columns:1fr}
+    .branch{grid-template-columns:1fr;gap:16px}
+    .branch::before{display:none}
+    .box{max-width:100%}
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#000000;--card:#24323D;--card2:#003545;--ink:#edf3f6;--ink-strong:#ffffff;
+      --muted:#bbc9d0;--line:#4c626f;--accent-strong:#71D3DC;--light-blue:#003545;
+      --good:#95ddb6;--goodbg:#14352b;--warn:#ffd09a;--warnbg:#3f2c13;--bad:#ffb6b1;--badbg:#462522}
+    .box.out.alt,.pnode.out,.vcol.b,.vcol.b h4{color:#003545}
+    .p-low{background:#d9eff8;color:#11567F}
+    .p-rep{background:#eadef8;color:#5b2e9e}
+    svg{color-scheme:light}
   }
 </style>
 </head>
@@ -171,12 +199,12 @@ reproducibility of an answer are set by how far down it was resolved.</p>
   <div class="rung r4">
     <div class="nm">Agent skill<small>written procedure</small></div>
     <div class="ds">Runs a known workflow in a fixed order with preconditions that can fail.</div>
-    <div class="cst"><span class="pill p-mid">Bounded tokens</span><br><span class="pill p-rep">Deterministic steps</span></div>
+    <div class="cst"><span class="pill p-mid">Bound the scope</span><br><span class="pill p-rep">Still uses an LLM</span></div>
   </div>
   <div class="rung r3">
     <div class="nm">Semantic layer<small>metrics and dimensions</small></div>
-    <div class="ds">Answers a business question in natural language against governed metric definitions.</div>
-    <div class="cst"><span class="pill p-low">WH + small token</span><br><span class="pill p-rep">Stable definitions</span></div>
+    <div class="ds">Named definitions queried directly in SQL, or through Analyst for natural-language questions.</div>
+    <div class="cst"><span class="pill p-low">SQL or Analyst</span><br><span class="pill p-rep">Stable definitions</span></div>
   </div>
   <div class="rung r2">
     <div class="nm">Curated tables<small>conformed, tested</small></div>
@@ -197,7 +225,7 @@ missing is how a second, divergent definition of a metric gets born.</p>
 <div class="grid g5">
   <div class="tool t1">
     <h4>SQL + visualization</h4>
-    <p class="kv"><b>Costs:</b> warehouse seconds. No tokens.</p>
+    <p class="kv"><b>Costs:</b> SQL compute; no inference to render an existing chart.</p>
     <p class="kv"><b>Repeatable:</b> exactly.</p>
     <ul>
       <li>Reach for it when the comparison, the trend, or the uncertainty is the point</li>
@@ -207,17 +235,17 @@ missing is how a second, divergent definition of a metric gets born.</p>
   </div>
   <div class="tool t2">
     <h4>Semantic layer</h4>
-    <p class="kv"><b>Costs:</b> warehouse + a small per-question token charge.</p>
+    <p class="kv"><b>Costs:</b> SQL compute, plus Analyst usage when invoked.</p>
     <p class="kv"><b>Repeatable:</b> within the governed metric set.</p>
     <ul>
       <li>Ad-hoc read-only business questions</li>
       <li>Metrics, dimensions, synonyms, declared cardinality</li>
-      <li>Verified queries retrieve an answer instead of regenerating it</li>
+      <li>Verified examples guide generation; they do not cache answers</li>
     </ul>
   </div>
   <div class="tool t3">
     <h4>Cortex Search</h4>
-    <p class="kv"><b>Costs:</b> indexing and refresh, then per-query serving.</p>
+    <p class="kv"><b>Costs:</b> refresh, embeddings, indexed-size serving, and storage.</p>
     <p class="kv"><b>Repeatable:</b> retrieval is stable, synthesis is not.</p>
     <ul>
       <li>Passages that explain the figures, with provenance</li>
@@ -247,39 +275,32 @@ missing is how a second, divergent definition of a metric gets born.</p>
   </div>
 </div>
 
-<h2>Relative cost per answer</h2>
-<p class="sub">Ordinal, not measured. The ordering holds across accounts; the magnitudes
-depend on your rates, row counts, and model choice. Measure your own with
-<code>sql/40_cost_observability.sql</code>.</p>
-
-<div class="scale">
-  <div class="srow"><div>Materialized metric</div>
-    <div class="sbar" style="width:9%;background:var(--windy)">WH only</div></div>
-  <div class="srow"><div>Semantic-layer question</div>
-    <div class="sbar" style="width:20%;background:var(--mid-blue)">WH + NL-to-SQL</div></div>
-  <div class="srow"><div>Verified query hit</div>
-    <div class="sbar" style="width:13%;background:var(--mid-blue)">retrieved, not generated</div></div>
-  <div class="srow"><div>Retrieval-grounded report</div>
-    <div class="sbar" style="width:38%;background:var(--sf-blue);color:var(--ink-strong)">index + serve + synthesis</div></div>
-  <div class="srow"><div>Skill-driven workflow</div>
-    <div class="sbar" style="width:52%;background:var(--purple-moon)">bounded reasoning</div></div>
-  <div class="srow"><div>Free agent reasoning</div>
-    <div class="sbar" style="width:78%;background:var(--first-light)">schema discovery + retries</div></div>
-  <div class="srow"><div>AI function, full re-score</div>
-    <div class="sbar" style="width:100%;background:var(--bad)">tokens &times; every row, every run</div></div>
-</div>
+<h2 id="cost-drivers">Cost drivers</h2>
+<p class="sub">There is no universal product-cost ranking. Measure the same workload and
+quality bar before and after a change. Sources: <a href="https://docs.snowflake.com/en/sql-reference/account-usage/cortex_ai_functions_usage_history">AI Functions usage</a>,
+<a href="https://docs.snowflake.com/en/sql-reference/account-usage/snowflake_coco_usage_history">CoCo usage</a>, and
+<a href="https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs">Search costs</a>.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Workload</th><th>What to reduce</th><th>What must stay fixed</th></tr></thead>
+  <tbody>
+    <tr><td class="q">CoCo authoring</td><td>Unnecessary context, retries, duplicated exploration</td><td>Accepted task and required tests</td></tr>
+    <tr><td class="q">SQL AI enrichment</td><td>Unneeded rows, repeated inference, oversized input/output</td><td>Coverage and labeled-set quality</td></tr>
+    <tr><td class="q">Retrieval and synthesis</td><td>Unused indexed data, idle serving, irrelevant retrieved text</td><td>Evidence recall and freshness</td></tr>
+    <tr><td class="q">Recurring metrics</td><td>Repeated computation and unnecessary conversational inference</td><td>Metric definition and refresh requirement</td></tr>
+  </tbody>
+</table></div>
 
 <div class="callout warn">
   <span class="ct">The one that surprises teams</span>
   A pipeline that re-classifies its whole corpus on every run has cost proportional to
   total data times run frequency. Incremental scoring makes it proportional to new data.
-  The same result, a different cost curve.
+  Reuse requires the same input and scorer version, with failures and concurrency handled explicitly.
 </div>
 
 <h2>Decision matrix</h2>
 <p class="sub">Route by the shape of the question, not by the tool someone is excited about.</p>
 
-<table>
+<div class="table-wrap"><table>
   <thead>
     <tr><th style="width:26%">The stakeholder asks</th><th style="width:19%">Route to</th>
         <th style="width:15%">Cost driver</th><th>Why not the alternative</th></tr>
@@ -294,7 +315,7 @@ depend on your rates, row counts, and model choice. Measure your own with
     <tr>
       <td class="q">"Show me X broken out by Y"</td>
       <td>Semantic layer</td>
-      <td><span class="pill p-low">WH + small token</span></td>
+      <td><span class="pill p-low">SQL + Analyst</span></td>
       <td>Hand-writing the SQL does not scale to the next twelve variants, and each variant is a chance to define X differently.</td>
     </tr>
     <tr>
@@ -319,19 +340,19 @@ depend on your rates, row counts, and model choice. Measure your own with
       <td class="q">"Classify these 400,000 rows"</td>
       <td>AISQL, incremental, filtered first</td>
       <td><span class="pill p-high">Tokens &times; rows</span></td>
-      <td>Agent-loop classification costs orders of magnitude more for a worse audit trail.</td>
+      <td>A per-record agent loop adds context and orchestration overhead. Compare quality and measured cost.</td>
     </tr>
     <tr>
       <td class="q">"Run the weekly report"</td>
       <td>Agent skill</td>
-      <td><span class="pill p-mid">Bounded tokens</span></td>
+      <td><span class="pill p-mid">Scope + synthesis</span></td>
       <td>A free-form prompt drifts week to week, and the drift is invisible until someone reconciles two editions.</td>
     </tr>
     <tr>
       <td class="q">"Is this number right?"</td>
-      <td>Gate suite, run as a subagent</td>
-      <td><span class="pill p-free">WH only</span></td>
-      <td>Asking the agent that produced the number is asking it to audit itself.</td>
+      <td>Deterministic gate runner; independent review when needed</td>
+      <td><span class="pill p-free">Compute + review</span></td>
+      <td>Use check evidence. A second agent is not a substitute for executable assertions.</td>
     </tr>
     <tr>
       <td class="q">"Can you build me a dashboard for this?"</td>
@@ -340,7 +361,7 @@ depend on your rates, row counts, and model choice. Measure your own with
       <td>Dashboards for questions asked once are the most common way DS capacity gets absorbed.</td>
     </tr>
   </tbody>
-</table>
+</table></div>
 
 <h2>Routing a new request</h2>
 
@@ -374,9 +395,8 @@ depend on your rates, row counts, and model choice. Measure your own with
 
 <div class="callout">
   <span class="ct">The recurrence rule</span>
-  The second time a stakeholder asks something, it is not a question, it is a metric.
-  Recurrence is the signal to push the logic down a layer &mdash; and the point at which
-  the cost per answer should start falling.
+  Recurring calculations are candidates for a reusable metric or query. Recurring judgment
+  may still need an agent. Measure the refresh and execution costs before materializing.
 </div>
 
 <h2>Where the layers sit</h2>
@@ -501,25 +521,25 @@ before the model reduces what the model is paid to look at.</p>
   <div class="vcol b">
     <h4>Counting over stored labels</h4>
     <ul>
-      <li>Returns the count of the population</li>
-      <li>Complete by construction</li>
-      <li>Same answer every time</li>
-      <li>Model paid once, per row, ever</li>
+      <li>Counts the explicitly scored population</li>
+      <li>Reports eligible, pending, and failed coverage</li>
+      <li>Stable for the same snapshot and scorer version</li>
+      <li>Reuses persisted input/version results</li>
       <li>Auditable against the gold set</li>
     </ul>
   </div>
 </div>
 
-<h2>Cost levers, in order of effect</h2>
+<h2>Cost levers to test</h2>
 <div class="grid g2">
   <div class="card">
     <h4>Token credits</h4>
     <ul style="font-size:.88rem;padding-left:17px;margin:6px 0">
       <li><b>Reduce rows.</b> Filter and dedupe before the model. For measurement rather than enrichment, score a sample and report an interval.</li>
       <li><b>Reduce tokens per row.</b> Ask for a label, not a paragraph explaining the label.</li>
-      <li><b>Never score twice.</b> Anti-join on the business tuple.</li>
-      <li><b>Right-size the model.</b> Fixed-purpose functions beat a general completion at the same job. Gate any swap on a labeled gold set and macro F1.</li>
-      <li><b>Estimate first.</b> <code>AI_COUNT_TOKENS</code> on a sample, multiplied out.</li>
+      <li><b>Reuse versioned results.</b> Null-safe content keys, scorer version, single writer, explicit failed-output review.</li>
+      <li><b>Right-size the approach.</b> Compare dedicated functions and alternatives at the same labeled-set quality bar.</li>
+      <li><b>Estimate first.</b> Count each actual function input; null estimates are unknown. Output tokens are additional where billed.</li>
     </ul>
   </div>
   <div class="card">
@@ -527,18 +547,40 @@ before the model reduces what the model is paid to look at.</p>
     <ul style="font-size:.88rem;padding-left:17px;margin:6px 0">
       <li><b>Materialize repetition.</b> A dashboard aggregation running per viewer is one scheduled table away from a point read.</li>
       <li><b>Aggregate in SQL.</b> Not in Python, not in the browser.</li>
-      <li><b>Tag every workload.</b> <code>QUERY_TAG</code> is the only thing that attributes spend to a pipeline instead of a person.</li>
+      <li><b>Tag SQL workloads.</b> Include a run ID; CoCo conversation usage has separate attribution.</li>
       <li><b>Separate the agent warehouse.</b> Small, monitored, so exploration cannot borrow production's size.</li>
-      <li><b>Auto-suspend at sixty seconds</b> on anything interactive.</li>
+      <li><b>Tune auto-suspend.</b> Start at sixty seconds for intermittent standard warehouses; measure cold starts and workload needs.</li>
     </ul>
   </div>
+</div>
+
+<h2 id="coco-practice">Working efficiently with CoCo</h2>
+<p class="sub">Use the agent to develop and verify the method. Run settled code directly
+when the recurring job needs no new interpretation.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Before the task</th><th>During the task</th><th>After the task</th></tr></thead>
+  <tbody><tr>
+    <td>Name files, objects, date range, deliverable, and acceptance checks. Keep <code>AGENTS.md</code> concise.</td>
+    <td>Use an efficient model for routine work; escalate for quality. Return aggregates and small samples. Bound retries and delegation.</td>
+    <td>Reuse the code. Track credits per accepted task, including repairs. Keep measured client results private.</td>
+  </tr></tbody>
+</table></div>
+<p>For a long Desktop conversation, inspect the context ring and use <code>/compact</code>
+when continuing the task. Use a new session for unrelated work. The context indicator is
+not a bill, and cached input is not priced like every other token.
+See <a href="https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-desktop/context-management">context management</a>.</p>
+<div class="callout warn">
+  <span class="ct">Use AI controls for AI spend</span>
+  Warehouse resource monitors do not cap AI-service credits. Use budgets for visibility and
+  periodic actions, plus appropriate CoCo daily limits or per-user quotas for enforcement.
+  Allow for metering latency. See <a href="https://docs.snowflake.com/en/user-guide/cortex-code/cost-controls">CoCo cost controls</a>.
 </div>
 
 <h2>Repeatability gates</h2>
 <p class="sub">Six defects that pass every unit test, raise no error, and ship a wrong
 number. Each is one query. A gate returns rows only on failure.</p>
 
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th style="width:30%">Defect</th><th style="width:34%">What it looks like</th><th>The gate</th></tr></thead>
   <tbody>
     <tr><td class="q">Valid-zero from a missed join</td>
@@ -560,13 +602,13 @@ number. Each is one query. A gate returns rows only on failure.</p>
         <td>Accuracy history becomes unfalsifiable</td>
         <td>Predictions append-only, stamped with the live version</td></tr>
   </tbody>
-</table>
+</table></div>
 
 <div class="callout bad">
-  <span class="ct">Run gates as a subagent</span>
-  Findings that share a context window with the work they are gating get rationalized.
-  Findings from a separate agent get acted on. A gate that warns and proceeds is
-  documentation, not a gate.
+  <span class="ct">Gate on evidence</span>
+  Execute stable checks as SQL or scripts. Missing, skipped, disabled, or errored checks
+  are not PASS. Use an independent reviewer when risk justifies the extra tokens.
+  The analytical SQL is a starter; read the limitations in <code>docs/07_repeatability_gates.md</code>.
 </div>
 
 <h2>Sequencing the adoption</h2>
@@ -576,21 +618,22 @@ number. Each is one query. A gate returns rows only on failure.</p>
   <div class="card"><h4>2. Conform their sources</h4><p style="font-size:.87rem;margin:0">Curated tables with declared grain and a gate query for each.</p></div>
   <div class="card"><h4>3. Define them once</h4><p style="font-size:.87rem;margin:0">One semantic view, with the synonyms your stakeholders actually use.</p></div>
   <div class="card"><h4>4. Add verified queries</h4><p style="font-size:.87rem;margin:0">The ten questions people really ask about those three metrics.</p></div>
-  <div class="card"><h4>5. Ask twenty times</h4><p style="font-size:.87rem;margin:0">Point one agent at it and ask the same question twenty times. Compare the answers.</p></div>
-  <div class="card"><h4>6. Widen</h4><p style="font-size:.87rem;margin:0">Only after step five is boring. If the twenty disagree, something below is still ambiguous.</p></div>
+  <div class="card"><h4>5. Test representative questions</h4><p style="font-size:.87rem;margin:0">Use a bounded set of questions and paraphrases with reviewed expected results.</p></div>
+  <div class="card"><h4>6. Widen</h4><p style="font-size:.87rem;margin:0">After quality and cost criteria pass. Repeated agreement alone does not prove correctness.</p></div>
 </div>
 
-<div class="callout good">
+<div class="callout good" id="measurement">
   <span class="ct">The metric to report upward</span>
-  Cost per answer, tracked by workload. A recurring question whose cost per answer is not
-  falling over time is a question that should have been pushed down a layer. That single
-  number turns the framework into something a finance stakeholder can hold you to.
+  CoCo credits per accepted task; scoring credits per 1,000 validated records, with quality
+  and coverage alongside. A usage-history row is not an answer. The measured exercise tests
+  first run, unchanged rerun, changed input, and changed scorer. No savings are assumed.
 </div>
 
 <footer>
   studio-ds-framework &middot; reference SQL, docs, and installable agent skills accompany this
-  page in the repository. Cost magnitudes shown here are ordinal; measure your own with
-  <code>sql/40_cost_observability.sql</code>.
+  page in the repository. Guidance reviewed 2026-09-17. Start with
+  <code>docs/08_coco_token_efficiency.md</code> and <code>docs/09_measured_exercise.md</code>.
+  Product meters: <code>sql/40_cost_observability.sql</code>. No client data or measured savings shown.
 </footer>
 
 </div>

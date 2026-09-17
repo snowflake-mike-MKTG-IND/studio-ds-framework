@@ -46,15 +46,17 @@ A semantic view is where a metric acquires a single definition. It carries:
 - **Metrics** with the aggregation written once. `total_revenue` is `SUM(revenue)` and nothing
   else, forever.
 - **Dimensions** with declared hierarchies, so a rollup cannot be assembled wrongly.
-- **Relationships** with declared cardinality, so a join cannot fan out.
+- **Relationships** with declared cardinality, supported by tests that prove the keys.
 - **Synonyms**, so "gross", "box office", and "revenue" all resolve to the same metric instead
   of three ad-hoc derivations.
-- **Verified queries**, which are the highest-leverage element. A reviewed question and its
-  correct SQL, stored. The next time that question is asked in any phrasing, the answer is
-  retrieved rather than regenerated.
+- **Verified queries**: reviewed questions and SQL examples that Cortex Analyst uses
+  when generating SQL for similar questions. They improve grounding; they are not a
+  cached result or a promise that any paraphrase produces identical SQL.
 
-Verified queries are how a semantic layer gets more reliable and cheaper at the same time. Each
-one removes a class of question from the generation path.
+Verified queries can reduce errors and rework. Measure their effect on quality and usage
+rather than assuming they remove inference. Execute a parameterized query or query the
+semantic view directly when a known question needs a deterministic path without Analyst.
+See [Verified Query Repository](https://docs.snowflake.com/en/user-guide/views-semantic/verified-query-repository).
 
 See `sql/20_semantic_view.sql`.
 
@@ -64,12 +66,12 @@ See `sql/20_semantic_view.sql`.
 |---|---|
 | Agent inspects the schema on every run | Metric names are the interface |
 | Metric definitions vary by run | Defined once, in one place |
-| Silent fanout on an undeclared join | Cardinality declared, join constrained |
+| Silent fanout on an undeclared join | Cardinality declared and verified against actual keys |
 | Large context spent on schema discovery | Small context, mostly the question |
-| Two runs disagree, and neither is auditable | Same question, same SQL, same number |
+| Two runs disagree, and neither is auditable | Defined metrics, traceable SQL, tested answers |
 
-The token effect is direct. Schema discovery is the bulk of a cold agent run. A semantic layer
-replaces exploration with lookup.
+A semantic layer reduces repeated schema exploration and ambiguity. The savings depend
+on the question, model, and execution path; the definitions alone do not eliminate tokens.
 
 ## Sequencing an adoption
 
@@ -80,8 +82,10 @@ about most, and drive them all the way up.
 2. Conform their sources into curated tables with declared grain and gate queries.
 3. Define those three metrics in a semantic view, with synonyms.
 4. Add verified queries for the ten questions people actually ask about them.
-5. Point one agent at it. Ask the same question twenty times. Compare.
-6. Widen only after step five is boring.
+5. Test a small fixed set of representative questions and paraphrases against expected
+   SQL results. Fix ambiguity before increasing the evaluation size.
+6. Widen after the quality and cost acceptance criteria pass.
 
-Step five is the acceptance test for the whole framework. If twenty runs of one question do
-not agree, something below is still ambiguous.
+Repeat a question when testing nondeterminism, but do not substitute repeated agreement
+for correctness. Two identical answers can both be wrong. Set an evaluation budget and
+compare to reviewed results on a fixed snapshot.
